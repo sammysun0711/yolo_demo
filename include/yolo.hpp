@@ -61,8 +61,8 @@ cv::Mat letterbox(cv::Mat img, int width=640, int height=640, int color=114, boo
     // Resize image to a 32-pixel-multiple rectangle https://github.com/ultralytics/yolov3/issues/232
     int rows = img.rows; // correspond to height
     int cols = img.cols; // correspond to width
-    slog::info << "image shape: ( " << rows << "," << cols << " )" << slog::endl;
-    slog::info << "size: ( " << width << "," << height << " )" << slog::endl;
+    //slog::info << "image shape: ( " << rows << "," << cols << " )" << slog::endl;
+    //slog::info << "size: ( " << width << "," << height << " )" << slog::endl;
     cv::Scalar value(color, color, color);
     // Scale ratio (new / old)
     double r = std::min(1.0 * height/rows, 1.0 * width/cols);
@@ -76,17 +76,17 @@ cv::Mat letterbox(cv::Mat img, int width=640, int height=640, int color=114, boo
     // Compute padding
     int new_unpad_cols = (int)(std::round(cols*r));
     int new_unpad_rows = (int)(std::round(rows*r));
-    slog::info << "new_unpad: (" << new_unpad_cols << "." << new_unpad_rows << " )" << slog::endl;
+    //slog::info << "new_unpad: (" << new_unpad_cols << "." << new_unpad_rows << " )" << slog::endl;
     // Paddding width and height
     int dw = width - new_unpad_cols;
     int dh = height - new_unpad_rows;
-    slog::info << "dw before auto resize: " << dw << slog::endl;
-    slog::info << "dh before auto resize: " << dh << slog::endl;
+    //slog::info << "dw before auto resize: " << dw << slog::endl;
+    //slog::info << "dh before auto resize: " << dh << slog::endl;
     if (automatic){
 	    dw = dw % 64;
 	    dh = dh % 64;
-	    slog::info << "dw after auto resize: " << dw << slog::endl;
-            slog::info << "dh after auto resize: " << dh << slog::endl;
+	    //slog::info << "dw after auto resize: " << dw << slog::endl;
+            //slog::info << "dh after auto resize: " << dh << slog::endl;
     }
     // Stretch
     else if (scaleFill){
@@ -100,20 +100,20 @@ cv::Mat letterbox(cv::Mat img, int width=640, int height=640, int color=114, boo
     // Divide padding into 2 sides
     dw = dw / 2;
     dh = dh / 2;
-    slog::info << "dw after dividing padding into 2 sides: " << dw << slog::endl;
-    slog::info << "dh after dividing padding into 2 sides:: " << dh << slog::endl;
+    //slog::info << "dw after dividing padding into 2 sides: " << dw << slog::endl;
+    //slog::info << "dh after dividing padding into 2 sides:: " << dh << slog::endl;
 
     // Resize
     cv::Size size(new_unpad_cols, new_unpad_rows);
     if (((img.rows!= new_unpad_rows) && img.cols!=new_unpad_cols)){
-    	slog::info << "img: (" << img.rows << "," << img.cols << ")" << "!= new_unpad: (" << new_unpad_rows << "," << new_unpad_cols << " )" << slog::endl;
+    	//slog::info << "img: (" << img.rows << "," << img.cols << ")" << "!= new_unpad: (" << new_unpad_rows << "," << new_unpad_cols << " )" << slog::endl;
 	cv::resize(img, img, size, 0, 0, cv::INTER_LINEAR);
     }
     int top = (int)(round(dh - 0.1));
     int bottom = (int)(round(dh + 0.1));
     int left = (int)(round(dw - 0.1));
     int right = (int)(round(dw + 0.1));
-    slog::info << "top: " << top << ", bottom: " << bottom << ", left:" << left << ", right" << right << slog::endl;
+    //slog::info << "top: " << top << ", bottom: " << bottom << ", left:" << left << ", right" << right << slog::endl;
     //cv::Mat img_resize;
     //cv::Mat img_resize_2;
     cv::copyMakeBorder(img, img, top, bottom, left, right, cv::BORDER_CONSTANT, value);
@@ -122,17 +122,17 @@ cv::Mat letterbox(cv::Mat img, int width=640, int height=640, int color=114, boo
     int left2 = 0;
     int right2 = 0;
     if (img.rows != height){
-    	slog::info << "img.rows: " << img.rows << "!= height: "<< height << slog::endl;
+    	//slog::info << "img.rows: " << img.rows << "!= height: "<< height << slog::endl;
 	top2 = (height - img.rows) / 2;
 	bottom2 = top2;
-	slog::info << "top2: " << top2 << ", bottom2: " << bottom2 << ", left2: " << left2 << ", right2: " << right2 << slog::endl;
+	//slog::info << "top2: " << top2 << ", bottom2: " << bottom2 << ", left2: " << left2 << ", right2: " << right2 << slog::endl;
 	cv::copyMakeBorder(img, img, top2, bottom2, left2, right2, cv::BORDER_CONSTANT, value);
     }
     else if (img.cols != width){
-        slog::info << "img.cols: " << img.cols << "!= width: "<< width << slog::endl;
+        //slog::info << "img.cols: " << img.cols << "!= width: "<< width << slog::endl;
     	left2 = (width - img.cols) / 2;
 	right2 = left2;
-	slog::info << "top2: " << top2 << ", bottom2: " << bottom2 << ", left2:" << left2 << ", right2: " << right2 << slog::endl;
+	//slog::info << "top2: " << top2 << ", bottom2: " << bottom2 << ", left2:" << left2 << ", right2: " << right2 << slog::endl;
 	cv::copyMakeBorder(img, img, top2, bottom2, left2, right2, cv::BORDER_CONSTANT, value);
     }
     return img;
@@ -185,33 +185,28 @@ struct DetectionObject {
 DetectionObject scale_box(DetectionObject *obj, double x, double y, double height, double width, int im_h, int im_w, int resized_im_h=640, int resized_im_w=640){
     DetectionObject scale_obj;
     
-    //double x = obj->xmin;
-    //double y = obj->ymin;
-    //double height = obj->ymax - obj->ymin;
-    //double width = obj->xmax - obj->xmin;
-    //slog::info << "[scale box]: " << height << ", width: " << width << slog::endl;
     double gain = std::min(1.0 * resized_im_w / im_w, 1.0 * resized_im_h / im_h); // gain = old / new
-    slog::info << "gain: " << gain << slog::endl; 
+    //slog::info << "gain: " << gain << slog::endl; 
     double pad_w = (resized_im_w - im_w * gain) / 2;
     double pad_h = (resized_im_h - im_h * gain) / 2;
     
-    slog::info << "pad: (" << pad_w << " , " << pad_h << " )" << slog::endl;
+    //slog::info << "pad: (" << pad_w << " , " << pad_h << " )" << slog::endl;
     int x_new = (int)((x - pad_w) / gain);
     int y_new = (int)((y - pad_h) / gain);
     
-    slog::info << "x_new: " << x_new << ", y_new: " << y_new << slog::endl;
+    //slog::info << "x_new: " << x_new << ", y_new: " << y_new << slog::endl;
 
     int w = (int)(width / gain);
     int h = (int)(height / gain);
     
-    slog::info << "w: " << w << ", h: " << h << slog::endl; 
+    //slog::info << "w: " << w << ", h: " << h << slog::endl; 
 
     int xmin = std::max(0, (int)(x_new - w / 2));
     int ymin = std::max(0, (int)(y_new - h / 2));
     int xmax = std::min(im_w, (int)(xmin + w));
     int ymax = std::min(im_h, (int)(ymin + h));
     
-    slog::info << "xmin: " << xmin << ", ymin: " << ymin << ", xmax: " << xmax << ", ymax: " << ymax << slog::endl;
+    //slog::info << "xmin: " << xmin << ", ymin: " << ymin << ", xmax: " << xmax << ", ymax: " << ymax << slog::endl;
     scale_obj.xmin = xmin;
     scale_obj.ymin = ymin;
     scale_obj.xmax = xmax;
@@ -294,7 +289,6 @@ public:
     std::vector<float> anchors = {10.0, 13.0, 16.0, 30.0, 33.0, 23.0, 30.0, 61.0, 62.0, 45.0, 59.0, 119.0, 116.0, 90.0,
                                   156.0, 198.0, 373.0, 326.0};
 
-    //YoloParamsV5() {}
     YoloParamsV5() {}
     /*
     YoloParamsV5(const std::shared_ptr<ngraph::op::v0::RegionYolo> regionYolo) {
@@ -381,9 +375,6 @@ void ParseYOLOV5Output(const YoloParamsV5 &params, const std::string & output_na
             int obj_index = EntryIndex(side, params.coords, params.classes, n * side * side + i, params.coords);
             int box_index = EntryIndex(side, params.coords, params.classes, n * side * side + i, 0);
             float scale = sigmoid(output_blob[obj_index]);
-	    //slog::info << "scale before sigmoid: " << scale << slog::endl;
-            //scale = 1.0 / (1.0 + std::exp(-scale));
-            //slog::info << "scale after sigmoid: " << scale << slog::endl;
 
             if (scale < threshold)
                 continue;
@@ -392,25 +383,9 @@ void ParseYOLOV5Output(const YoloParamsV5 &params, const std::string & output_na
             double height_ = sigmoid(output_blob[box_index + 3 * side_square]);
             double width_ = sigmoid(output_blob[box_index + 2 * side_square]);
             
-	    slog::info << "original x: " << x_ << ", y: " << y_ << ", height_: " << height_ << ", width_" << width_ << slog::endl;
-	    //slog::info << "original sigmoid x: " << sigmoid(x_) << ", y: " << sigmoid(y_) << ", height_: " << sigmoid(height_) << ", width_: " << sigmoid(width_) << slog::endl;
-            //double x_ = 1.0 / ( 1.0 + std::exp(-output_blob[box_index + 0 * side_square]));
-	    //slog::info << "x after sigmoid:" << x_ << slog::endl;
-            //double x = (col + sigmoid(output_blob[box_index + 0 * side_square])) / side * resized_im_w;
-	    /*
-	    double x = (col + sigmoid(output_blob[box_index + 0 * side_square])) / side * resized_im_w;
-            double y = (row + sigmoid(output_blob[box_index + 1 * side_square])) / side * resized_im_h;
-            double height = std::exp(sigmoid(output_blob[box_index + 3 * side_square])) * params.anchors[2 * n + 1];
-            double width = std::exp(sigmoid(output_blob[box_index + 2 * side_square])) * params.anchors[2 * n];
-	    */
-	    slog::info << "resized_im_w: " << resized_im_w << ". resized_im_h: " << resized_im_h << ", side: " << side << slog::endl;
-	    slog::info << "col: " << col << ", row: " << row << slog::endl;
-	    slog::info << "1.0 * resize_im_w/side: " << 1.0 * resized_im_w / side << slog::endl;
-	    slog::info << "1.0 * resize_im_h/side: " << 1.0 * resized_im_h / side << slog::endl;
+	    //slog::info << "original x: " << x_ << ", y: " << y_ << ", height_: " << height_ << ", width_" << width_ << slog::endl;
 	    double x = (2*x_ - 0.5 + col)*(1.0 * resized_im_w / side);
 	    double y = (2*y_ - 0.5 + row)*(1.0 * resized_im_h / side);
-	    slog::info << "2*x_ - 0.5 + col: " << 2*x_ - 0.5 + col << slog::endl;
-	    slog::info << "2*y_ - 0.5 + row: " << 2*y_ - 0.5 + row << slog::endl;
 	    int idx;
 	    if ((resized_im_w / side == 8) && (resized_im_h / side == 8))          // 80x80
 	        idx = 0;
@@ -418,17 +393,17 @@ void ParseYOLOV5Output(const YoloParamsV5 &params, const std::string & output_na
 		idx = 1;
 	    else if ((resized_im_w / side == 32) && (resized_im_h / side == 32))   // 20x20
 		idx = 2;
-	    slog::info << "idx: " << idx << slog::endl;
+	    //slog::info << "idx: " << idx << slog::endl;
 	    double width = std::pow(2*width_, 2) * params.anchors[idx * 6 + 2 * n];
 	    double height = std::pow(2*height_, 2) * params.anchors[idx * 6 + 2 * n + 1];
 
-	    slog::info << "x: " << x << ", y: " << y << ", height: " << height << ", width: "  << width << slog::endl;
+	    //slog::info << "x: " << x << ", y: " << y << ", height: " << height << ", width: "  << width << slog::endl;
             for (int j = 0; j < params.classes; ++j) {
                 int class_index = EntryIndex(side, params.coords, params.classes, n * side_square + i, params.coords + 1 + j);
 		float class_prob = sigmoid(output_blob[class_index]);
 		//class_prob = 1.0 / (1.0 + std::exp(-class_prob));
-		//float prob = scale * class_prob;
-		float prob = class_prob;
+		float prob = scale * class_prob;
+		//float prob = class_prob;
 		//slog::info << "detection probability: " << prob << slog::endl;
                 //float prob = scale * output_blob[class_index];
 		//slog::info << "prob before sigmoid: " << prob << slog::endl;
@@ -437,7 +412,7 @@ void ParseYOLOV5Output(const YoloParamsV5 &params, const std::string & output_na
                 if (prob < threshold)
                     continue;
 		//slog::info << "detection probability: " << prob << slog::endl;
-		slog::info << "Before scale box, x: " << x << ", y: " << y << ", height: " << height << ", width: " << width << ", class id: " << class_index << ", prob: " << prob << ", original_im_h: " << original_im_h << ", original_im_w: " << original_im_w << ", resized_im_h: " << resized_im_h << ", resized_im_w: " << resized_im_w << slog::endl;
+		//slog::info << "Before scale box, x: " << x << ", y: " << y << ", height: " << height << ", width: " << width << ", class id: " << class_index << ", prob: " << prob << ", original_im_h: " << original_im_h << ", original_im_w: " << original_im_w << ", resized_im_h: " << resized_im_h << ", resized_im_w: " << resized_im_w << slog::endl;
                 DetectionObject obj(x, y, height, width, j, prob,
                         static_cast<float>(original_im_h) / static_cast<float>(resized_im_h),
                         static_cast<float>(original_im_w) / static_cast<float>(resized_im_w));
@@ -446,7 +421,7 @@ void ParseYOLOV5Output(const YoloParamsV5 &params, const std::string & output_na
 			  static_cast<int>(original_im_w),
 			  static_cast<int>(resized_im_h),
 			  static_cast<int>(resized_im_w));
-		slog::info << "After scale box, xmin: " << obj.xmin << ", ymin: " << obj.ymin << ", xmax: " << obj.xmax << ", ymax: " << obj.ymax << ", class_id: " << obj.class_id << "confidence: " << obj.confidence << slog::endl;
+		//slog::info << "After scale box, xmin: " << obj.xmin << ", ymin: " << obj.ymin << ", xmax: " << obj.xmax << ", ymax: " << obj.ymax << ", class_id: " << obj.class_id << "confidence: " << obj.confidence << slog::endl;
                 //objects.push_back(obj);
                 objects.push_back(scaled_obj);
             

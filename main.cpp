@@ -54,6 +54,7 @@ using namespace cv;
 #ifdef av_err2str
 #undef av_err2str
 #include <string>
+
 av_always_inline std::string av_err2string(int errnum) {
     char str[AV_ERROR_MAX_STRING_SIZE];
     return av_make_error_string(str, AV_ERROR_MAX_STRING_SIZE, errnum);
@@ -78,7 +79,7 @@ bool FLAGS_no_show = false;
 
 int how_many_packets_to_process = 100;
 int frame_number = 0;
-
+int frame_base = 4;
 // print out the steps and errors
 static void logging(const char *fmt, ...);
 // decode packets into frames
@@ -407,8 +408,8 @@ static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFra
       double inference_time = std::chrono::duration_cast<ms>(inference_t1 - inference_t0).count();
       slog::info << "[Frame " << frame_number << " ] Inference Time:  " << inference_time << "ms " << slog::endl;
       
-      cv::imshow("frame", image);
-      cv::waitKey(0);
+      //cv::imshow("frame", image);
+      //cv::waitKey(0);
       
       /*
       if (pFrame->format != AV_PIX_FMT_YUV420P)
@@ -453,6 +454,9 @@ static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFra
     }
     
     if (response >= 0) {
+      if (frame_number % frame_base != 0){
+          return 0;
+      }
       // Convert avframe (AV_PIX_FMT_YUV420P) to cv::Mat (AV_PIX_FMT_BGR24)
       auto conversion_t0 = std::chrono::high_resolution_clock::now();
       cv::Mat image = avframe_to_cvmat(pFrame);
@@ -467,8 +471,8 @@ static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFra
       double inference_time = std::chrono::duration_cast<ms>(inference_t1 - inference_t0).count();
       slog::info << "[Frame " << frame_number << " ] Inference Time:  " << inference_time << "ms " << slog::endl;
       
-      cv::imshow("frame", image);
-      cv::waitKey(0);      
+      //cv::imshow("frame", image);
+      //cv::waitKey(0);      
       }
       
   }
