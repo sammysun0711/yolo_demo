@@ -83,6 +83,7 @@ int frame_number = 0;
 static void logging(const char *fmt, ...);
 // decode packets into frames
 static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFrame *pFrame, YOLOv3 model);
+static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFrame *pFrame, YOLOv5 model);
 // save a frame into a .pgm file
 // static void save_gray_frame(unsigned char *buf, int wrap, int xsize, int ysize, char *filename);
 static cv::Mat avframe_to_cvmat(const AVFrame * frame);
@@ -91,8 +92,10 @@ int main(int argc, const char *argv[])
 {
   double total_inference_time = 0.0; 
   logging("initialize yolo model.\n");
-  YOLOv3 model = YOLOv3();
+  //YOLOv3 model = YOLOv3();
+  YOLOv5 model = YOLOv5();
   model.initialize_model();
+  
   if (argc < 2) {
     printf("You need to specify a media file.\n");
     return -1;
@@ -236,7 +239,7 @@ int main(int argc, const char *argv[])
   }
 
   int response = 0;
-
+  //cv::Mat *image = nullptr;
   // fill the Packet with data from the Stream
   // https://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#ga4fdb3084415a82e3810de6ee60e46a61
   while (av_read_frame(pFormatContext, pPacket) >= 0)
@@ -393,6 +396,9 @@ static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFra
       auto conversion_t1 = std::chrono::high_resolution_clock::now();
       double conversion_time = std::chrono::duration_cast<ms>(conversion_t1 - conversion_t0).count();
       slog::info << "[Frame " << frame_number << " ] Image Conversion Time:  " << conversion_time << " ms " << slog::endl;
+      //if (!image->empty()){
+      //	return 0;
+      //}
       
       // Inference 
       auto inference_t0 = std::chrono::high_resolution_clock::now();
@@ -404,12 +410,12 @@ static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFra
       cv::imshow("frame", image);
       cv::waitKey(0);
       
-      
+      /*
       if (pFrame->format != AV_PIX_FMT_YUV420P)
       {
         logging("Warning: the generated file may not be a grayscale image, but could e.g. be just the R component if the video format is RGB");
       }
-      
+      */
       // save a grayscale frame into a .pgm file
       // save_gray_frame(pFrame->data[0], pFrame->linesize[0], pFrame->width, pFrame->height, frame_filename);
       }
@@ -417,6 +423,58 @@ static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFra
   }
   return 0;
 }
+
+static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFrame *pFrame, YOLOv5 model)
+{
+  // Supply raw packet data as input to a decoder
+  // https://ffmpeg.org/doxygen/trunk/group__lavc__decoding.html#ga58bc4bf1e0ac59e27362597e467efff3
+  int response = avcodec_send_packet(pCodecContext, pPacket);
+
+  if (response < 0) {
+    logging("Error while sending a packet to the decoder: %s", av_err2str(response));
+    return response;
+  }
+
+  while (response >= 0)
+  {
+    // Return decoded output data (into a frame) from a decoder
+    // https://ffmpeg.org/doxygen/trunk/group__lavc__decoding.html#ga11e6542c4e66d3028668788a1a74217c
+    auto decoding_t0 = std::chrono::high_resolution_clock::now();
+    response = avcodec_receive_frame(pCodecContext, pFrame);
+    auto decoding_t1 = std::chrono::high_resolution_clock::now();
+    double decoding_time = std::chrono::duration_cast<ms>(decoding_t1 - decoding_t0).count();
+    slog::info << "[Frame " << frame_number << " ] Decoding Time:  " << decoding_time << " ms" << slog::endl;
+    if (response == AVERROR(EAGAIN) || response == AVERROR_EOF) {
+      break;
+    } else if (response < 0) {
+      logging("Error while receiving a frame from the decoder: %s", av_err2str(response));
+      //logging("Error while receiving a frame from the decoder: %s", a(response));
+      return response;
+    }
+    
+    if (response >= 0) {
+      // Convert avframe (AV_PIX_FMT_YUV420P) to cv::Mat (AV_PIX_FMT_BGR24)
+      auto conversion_t0 = std::chrono::high_resolution_clock::now();
+      cv::Mat image = avframe_to_cvmat(pFrame);
+      auto conversion_t1 = std::chrono::high_resolution_clock::now();
+      double conversion_time = std::chrono::duration_cast<ms>(conversion_t1 - conversion_t0).count();
+      slog::info << "[Frame " << frame_number << " ] Image Conversion Time:  " << conversion_time << " ms " << slog::endl;
+      
+      // Inference 
+      auto inference_t0 = std::chrono::high_resolution_clock::now();
+      model.inference(image, frame_number);
+      auto inference_t1 = std::chrono::high_resolution_clock::now();
+      double inference_time = std::chrono::duration_cast<ms>(inference_t1 - inference_t0).count();
+      slog::info << "[Frame " << frame_number << " ] Inference Time:  " << inference_time << "ms " << slog::endl;
+      
+      cv::imshow("frame", image);
+      cv::waitKey(0);      
+      }
+      
+  }
+  return 0;
+}
+
 
 /*
 static void save_gray_frame(unsigned char *buf, int wrap, int xsize, int ysize, char *filename)
