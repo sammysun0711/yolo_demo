@@ -79,7 +79,7 @@ bool FLAGS_no_show = false;
 
 int how_many_packets_to_process = 100;
 int frame_number = 0;
-int frame_base = 4;
+int frame_base = 6;
 // print out the steps and errors
 static void logging(const char *fmt, ...);
 // decode packets into frames
@@ -367,6 +367,10 @@ static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFra
     }
     
     if (response >= 0) {
+      if (frame_number % frame_base != 0){
+          return 0;
+      }
+
       /*
       logging(
           "Frame %d (type=%c, size=%d bytes, format=%d) pts %d key_frame %d [DTS %d]",

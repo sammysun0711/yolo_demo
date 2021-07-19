@@ -31,6 +31,7 @@ using namespace cv;
 
 std::string FLAGS_m_yolov3 = "./models/yolov3/INT8/yolo-v3-tf.xml";
 std::string FLAGS_m_yolov5 = "./models/yolov5/INT8/yolov5s_v5.xml";
+//std::string FLAGS_m_yolov5 = "./models/yolov5/FP16/yolov5s.xml";
 std::string FLAGS_labels = "./coco.names";
 std::string FLAGS_d = "CPU";
 bool FLAGS_auto_resize = true;
@@ -140,16 +141,16 @@ cv::Mat letterbox(cv::Mat img, int width=640, int height=640, int color=114, boo
 }
 
 void FrameToBlob(const cv::Mat &frame, InferRequest::Ptr &inferRequest, const std::string &inputName) {
-    cv::Mat frame_resize = letterbox(frame);
+    //cv::Mat frame_resize = letterbox(frame);
     if (FLAGS_auto_resize) {
         /* Just set input blob containing read image. Resize and layout conversion will be done automatically */
         //inferRequest->SetBlob(inputName, wrapMat2Blob(frame));
-        inferRequest->SetBlob(inputName, wrapMat2Blob(frame_resize));
+        inferRequest->SetBlob(inputName, wrapMat2Blob(frame));
     } else {
         /* Resize and copy data from the image to the input blob */
         Blob::Ptr frameBlob = inferRequest->GetBlob(inputName);
         //matU8ToBlob<uint8_t>(frame, frameBlob);
-        matU8ToBlob<uint8_t>(frame_resize, frameBlob);
+        matU8ToBlob<uint8_t>(frame, frameBlob);
     }
 }
 
@@ -756,7 +757,8 @@ void YOLOv5::inference(cv::Mat& frame, int frame_number) {
 	auto inputName = inputInfo.begin()->first;        	
 	auto outputName = outputInfo.begin()->first;
 	if (!frame.empty()) {
-		FrameToBlob(frame, async_infer_request_curr, inputName);
+		cv::Mat frame_resize = letterbox(frame);
+		FrameToBlob(frame_resize, async_infer_request_curr, inputName);
         } else {
 		throw std::logic_error("Failed to get frame from cv::VideoCapture");
 	}
