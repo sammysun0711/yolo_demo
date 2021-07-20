@@ -71,16 +71,9 @@ static cv::Mat avframe_to_cvmat(const AVFrame * frame);
 
 int main(int argc, const char *argv[])
 {
-  double total_latency_time = 0.0;
-  logging("Initialize YOLO Model.\n");
-  std::string model_path = std::string(argv[1]);
-  //YOLOv3 model = YOLOv3();
-  YOLOv5 model = YOLOv5();
-  model.initialize_model(model_path);
-  
-  if (argc < 3) {
-    printf("You need to specify a input model path and media file.\n");
-    printf("Example ./main [input_model_path] [input_media_path].\n");
+  if (argc < 4) {
+    printf("You need to specify a input model path, yolo version and media file.\n");
+    printf("Example: ./main [input_model_path] [yolov3/yolov5] [input_media_path].\n");
     return -1;
   }
   
@@ -95,7 +88,7 @@ int main(int argc, const char *argv[])
     return -1;
   }
 
-  logging("Opening the input file (%s) and loading format (container) header", argv[2]);
+  logging("Opening the input file (%s) and loading format (container) header", argv[3]);
   // Open the file and read its header. The codecs are not opened.
   // The function arguments are:
   // AVFormatContext (the component we allocated memory for),
@@ -103,7 +96,7 @@ int main(int argc, const char *argv[])
   // AVInputFormat (if you pass NULL it'll do the auto detect)
   // and AVDictionary (which are options to the demuxer)
   // http://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#ga31d601155e9035d5b0e7efedc894ee49
-  if (avformat_open_input(&pFormatContext, argv[2], NULL, NULL) != 0) {
+  if (avformat_open_input(&pFormatContext, argv[3], NULL, NULL) != 0) {
     logging("ERROR could not open the file");
     return -1;
   }
@@ -222,7 +215,44 @@ int main(int argc, const char *argv[])
     logging("Failed to allocated memory for AVPacket");
     return -1;
   }
+
+  logging("Initialize YOLO Model.\n");
+  std::string model_path = std::string(argv[1]);
+  std::string model_version = std::string(argv[2]);
+  YOLO *model=nullptr;
+  try{
+      if (model_version == "yolov3"){
+           model = new YOLOv3();
+      }
+      else if (model_version == "yolov5"){
+	   model = new YOLOv5();
+      }
+      else {
+	   logging("Wrong YOLO version given, please use either yolov3 or yolov5!");
+	   return -1;
+      }
+      slog::info << "Model version: " << model->get_version() << slog::endl;
+      model->initialize_model(model_path);
+  }
+  catch(const std::runtime_error& re){
+    // speciffic handling for runtime_error
+    std::cerr << "Runtime error: " << re.what() << std::endl;
+  }
+  catch(const std::exception& ex)
+  {
+    // speciffic handling for all exceptions extending std::exception, except
+    // std::runtime_error which is handled explicitly
+    std::cerr << "Error occurred: " << ex.what() << std::endl;
+  }
+  catch(...){
+    // catch any other errors (that we have no information about)
+    std::cerr << "Initialize YOLO model failed!" << std::endl;
+    printf("You need to specify a input model path, yolo version and media file.\n");
+    printf("Example: ./main [input_model_path] [yolov3/yolov5] [input_media_path].\n");
+  }
+
   cv::Mat image = cv::Mat(width, height, CV_8UC3);
+  double total_latency_time = 0.0;
   int response = 0;
   // fill the Packet with data from the Stream
   // https://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#ga4fdb3084415a82e3810de6ee60e46a61
@@ -248,7 +278,7 @@ int main(int argc, const char *argv[])
 	if (response>=0){
 	  // Inference 
 	  auto inference_t0 = std::chrono::high_resolution_clock::now();
-          model.inference(image, frame_number);
+          model->inference(image, frame_number);
           auto inference_t1 = std::chrono::high_resolution_clock::now();
           double inference_time = std::chrono::duration_cast<ms>(inference_t1 - inference_t0).count();
           slog::info << "[Frame " << frame_number << "] Inference Time:  " << inference_time << "ms " << slog::endl;
@@ -272,7 +302,10 @@ int main(int argc, const char *argv[])
   slog::info << "Mean Latency: " << mean_latency << " ms" << slog::endl;
   slog::info << "Mean Throughput:  " << mean_throughput << " FPS" << slog::endl;
   logging("releasing all the resources");
- 
+
+  // Release memory
+  delete model;
+  model=nullptr;
   avformat_close_input(&pFormatContext);
   av_packet_free(&pPacket);
   av_frame_free(&pFrame);
