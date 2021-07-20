@@ -21,6 +21,16 @@
 #include <string>
 #include <algorithm>
 #include <iterator>
+#include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
+#include <inttypes.h>
+
+#include <opencv2/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/highgui.hpp>
 
 #include <inference_engine.hpp>
 #include <ngraph/ngraph.hpp>
@@ -34,26 +44,10 @@ extern "C" {
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
 }
-
 #endif
-//#include <libavcodec/avcodec.h>
-//#include <libavformat/avformat.h>
-#include <stdio.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <string.h>
-#include <inttypes.h>
-
-#include <opencv2/core.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/imgcodecs.hpp>
-#include <opencv2/highgui.hpp>
-
-using namespace cv;
 
 #ifdef av_err2str
 #undef av_err2str
-#include <string>
 
 av_always_inline std::string av_err2string(int errnum) {
     char str[AV_ERROR_MAX_STRING_SIZE];
@@ -62,47 +56,35 @@ av_always_inline std::string av_err2string(int errnum) {
 #define av_err2str(err) av_err2string(err).c_str()
 #endif  // av_err2str
 
-// (TODO) Move global variable 
-/*
-std::string FLAGS_m = "./models/yolov3/INT8/yolo-v3-tf.xml";
-std::string FLAGS_labels = "./coco.names";
-std::string FLAGS_d = "CPU";
-bool FLAGS_auto_resize = true;
-bool FLAGS_r = true;
+using namespace cv;
 
-double FLAGS_t = 0.5;
-double FLAGS_iou_t = 0.4;
-bool FLAGS_no_show = false;
-*/
-
-//typedef std::chrono::duration<double, std::ratio<1, 1000>> ms;
-
+// (TODO) Move global variable
 int how_many_packets_to_process = 100;
 int frame_number = 0;
 int frame_base = 6;
+
 // print out the steps and errors
 static void logging(const char *fmt, ...);
 // decode packets into frames
-static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFrame *pFrame, YOLOv3 model);
-static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFrame *pFrame, YOLOv5 model);
-// save a frame into a .pgm file
-// static void save_gray_frame(unsigned char *buf, int wrap, int xsize, int ysize, char *filename);
+static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFrame *pFrame, cv::Mat &image);
 static cv::Mat avframe_to_cvmat(const AVFrame * frame);
 
 int main(int argc, const char *argv[])
 {
-  double total_inference_time = 0.0; 
-  logging("initialize yolo model.\n");
+  double total_latency_time = 0.0;
+  logging("Initialize YOLO Model.\n");
+  std::string model_path = std::string(argv[1]);
   //YOLOv3 model = YOLOv3();
   YOLOv5 model = YOLOv5();
-  model.initialize_model();
+  model.initialize_model(model_path);
   
-  if (argc < 2) {
-    printf("You need to specify a media file.\n");
+  if (argc < 3) {
+    printf("You need to specify a input model path and media file.\n");
+    printf("Example ./main [input_model_path] [input_media_path].\n");
     return -1;
   }
   
-  logging("initializing all the containers, codecs and protocols.");
+  logging("Initializing all the containers, codecs and protocols.");
   
   // AVFormatContext holds the header information from the format (Container)
   // Allocating memory for this component
@@ -113,7 +95,7 @@ int main(int argc, const char *argv[])
     return -1;
   }
 
-  logging("opening the input file (%s) and loading format (container) header", argv[1]);
+  logging("Opening the input file (%s) and loading format (container) header", argv[2]);
   // Open the file and read its header. The codecs are not opened.
   // The function arguments are:
   // AVFormatContext (the component we allocated memory for),
@@ -121,7 +103,7 @@ int main(int argc, const char *argv[])
   // AVInputFormat (if you pass NULL it'll do the auto detect)
   // and AVDictionary (which are options to the demuxer)
   // http://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#ga31d601155e9035d5b0e7efedc894ee49
-  if (avformat_open_input(&pFormatContext, argv[1], NULL, NULL) != 0) {
+  if (avformat_open_input(&pFormatContext, argv[2], NULL, NULL) != 0) {
     logging("ERROR could not open the file");
     return -1;
   }
@@ -129,9 +111,9 @@ int main(int argc, const char *argv[])
   // now we have access to some information about our file
   // since we read its header we can say what format (container) it's
   // and some other information related to the format itself.
-  logging("format %s, duration %lld us, bit_rate %lld", pFormatContext->iformat->name, pFormatContext->duration, pFormatContext->bit_rate);
+  logging("Format %s, duration %lld us, bit_rate %lld", pFormatContext->iformat->name, pFormatContext->duration, pFormatContext->bit_rate);
 
-  logging("finding stream info from format");
+  logging("Finding stream info from format");
   // read Packets from the Format to get stream information
   // this function populates pFormatContext->streams
   // (of size equals to pFormatContext->nb_streams)
@@ -153,7 +135,7 @@ int main(int argc, const char *argv[])
   // https://ffmpeg.org/doxygen/trunk/structAVCodecParameters.html
   AVCodecParameters *pCodecParameters =  NULL;
   int video_stream_index = -1;
-
+  int width, height;
   // loop though all the streams and print its main information
   for (size_t i = 0; i < pFormatContext->nb_streams; i++)
   {
@@ -164,7 +146,7 @@ int main(int argc, const char *argv[])
     logging("AVStream->start_time %" PRId64, pFormatContext->streams[i]->start_time);
     logging("AVStream->duration %" PRId64, pFormatContext->streams[i]->duration);
 
-    logging("finding the proper decoder (CODEC)");
+    logging("Finding the proper decoder (CODEC)");
 
     // AVCodec *pLocalCodec = NULL;
 
@@ -187,6 +169,8 @@ int main(int argc, const char *argv[])
       }
 
       logging("Video Codec: resolution %d x %d", pLocalCodecParameters->width, pLocalCodecParameters->height);
+      width = pLocalCodecParameters->width;
+      height = pLocalCodecParameters->height;
     } else if (pLocalCodecParameters->codec_type == AVMEDIA_TYPE_AUDIO) {
       logging("Audio Codec: %d channels, sample rate %d", pLocalCodecParameters->channels, pLocalCodecParameters->sample_rate);
     }
@@ -196,7 +180,7 @@ int main(int argc, const char *argv[])
   }
 
   if (video_stream_index == -1) {
-    logging("File %s does not contain a video stream!", argv[1]);
+    logging("File %s does not contain a video stream!", argv[2]);
     return -1;
   }
 
@@ -204,7 +188,7 @@ int main(int argc, const char *argv[])
   AVCodecContext *pCodecContext = avcodec_alloc_context3(pCodec);
   if (!pCodecContext)
   {
-    logging("failed to allocated memory for AVCodecContext");
+    logging("Failed to allocated memory for AVCodecContext");
     return -1;
   }
 
@@ -212,7 +196,7 @@ int main(int argc, const char *argv[])
   // https://ffmpeg.org/doxygen/trunk/group__lavc__core.html#gac7b282f51540ca7a99416a3ba6ee0d16
   if (avcodec_parameters_to_context(pCodecContext, pCodecParameters) < 0)
   {
-    logging("failed to copy codec params to codec context");
+    logging("Failed to copy codec params to codec context");
     return -1;
   }
 
@@ -220,7 +204,7 @@ int main(int argc, const char *argv[])
   // https://ffmpeg.org/doxygen/trunk/group__lavc__core.html#ga11f785a188d7d9df71621001465b0f1d
   if (avcodec_open2(pCodecContext, pCodec, NULL) < 0)
   {
-    logging("failed to open codec through avcodec_open2");
+    logging("Failed to open codec through avcodec_open2");
     return -1;
   }
 
@@ -228,83 +212,64 @@ int main(int argc, const char *argv[])
   AVFrame *pFrame = av_frame_alloc();
   if (!pFrame)
   {
-    logging("failed to allocated memory for AVFrame");
+    logging("Failed to allocated memory for AVFrame");
     return -1;
   }
   // https://ffmpeg.org/doxygen/trunk/structAVPacket.html
   AVPacket *pPacket = av_packet_alloc();
   if (!pPacket)
   {
-    logging("failed to allocated memory for AVPacket");
+    logging("Failed to allocated memory for AVPacket");
     return -1;
   }
-
+  cv::Mat image = cv::Mat(width, height, CV_8UC3);
   int response = 0;
-  //cv::Mat *image = nullptr;
   // fill the Packet with data from the Stream
   // https://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#ga4fdb3084415a82e3810de6ee60e46a61
+
   while (av_read_frame(pFormatContext, pPacket) >= 0)
   {
     // if it's the video stream
     if (pPacket->stream_index == video_stream_index) {
-        //logging("AVPacket->pts %" PRId64, pPacket->pts);
+	// Decoding
         auto t0 = std::chrono::high_resolution_clock::now();
-        
-	//auto decoding_t0 = std::chrono::high_resolution_clock::now();
         frame_number++;
-	slog::info << "****************************** Frame Number " << frame_number << "*************************************************" << slog::endl;
-	response = decode_packet(pPacket, pCodecContext, pFrame, model);
-        //auto decoding_t1 = std::chrono::high_resolution_clock::now();
-	//double decoding_time = std::chrono::duration_cast<ms>(decoding_t1 - decoding_t0).count();
-	/*
-	if (response >= 0){
+	slog::info << " ************************************************* Frame Number " << frame_number << " *************************************************" << slog::endl;
+	response = decode_packet(pPacket, pCodecContext, pFrame, image);
+	// Skip frame according to frame base
+	--how_many_packets_to_process;
+	if (frame_number % frame_base != 0){
           auto t1 = std::chrono::high_resolution_clock::now();
-      	  double decode_inferenece_time = std::chrono::duration_cast<ms>(t1 - t0).count();
-	  frame_number++;
-          slog::info << "****************************** Frame Number " << frame_number << "*************************************************" << slog::endl;
-          logging("Frame %d (type=%c, size=%d bytes, format=%d) pts %d key_frame %d [DTS %d]",
-			  pCodecContext->frame_number,
-			  av_get_picture_type_char(pFrame->pict_type),
-			  pFrame->pkt_size,
-			  pFrame->format,
-			  pFrame->pts,
-			  pFrame->key_frame,
-			  pFrame->coded_picture_number
-          );
-	  
-          // Convert avframe (AV_PIX_FMT_YUV420P) to cv::Mat (AV_PIX_FMT_BGR24)
-          auto conversion_t0 = std::chrono::high_resolution_clock::now();
-          cv::Mat image = avframe_to_cvmat(pFrame);
-          auto conversion_t1 = std::chrono::high_resolution_clock::now();
-          double conversion_time = std::chrono::duration_cast<ms>(conversion_t1 - conversion_t0).count();
-          slog::info << "[Frame " << frame_number << " ] Image Conversion Time:  " << conversion_time << " ms " << slog::endl;
-    	  
+          double decode_inferenece_time = std::chrono::duration_cast<ms>(t1 - t0).count();
+          slog::info << "[Frame " << frame_number << "] Single Packet Decode + Image Conversion + Inference Time: " << decode_inferenece_time << " ms" << slog::endl;
+          total_latency_time += decode_inferenece_time;
+          continue;
+	}
+	if (response>=0){
 	  // Inference 
-          
 	  auto inference_t0 = std::chrono::high_resolution_clock::now();
-          model.inference(image);
+          model.inference(image, frame_number);
           auto inference_t1 = std::chrono::high_resolution_clock::now();
           double inference_time = std::chrono::duration_cast<ms>(inference_t1 - inference_t0).count();
-          slog::info << "[Frame " << frame_number << " ] Inference Time:  " << inference_time << "ms " << slog::endl;
-          slog::info << "[Frame " << frame_number << "] Single Packet Decode + Image Conversion + Inference Time: " << decode_inferenece_time << " ms" << slog::endl;
-          total_inference_time += decode_inferenece_time;
+          slog::info << "[Frame " << frame_number << "] Inference Time:  " << inference_time << "ms " << slog::endl;
+	  cv::imshow("frame", image);
+	  cv::waitKey(0);
 	}
-	*/
 	auto t1 = std::chrono::high_resolution_clock::now();
 	double decode_inferenece_time = std::chrono::duration_cast<ms>(t1 - t0).count();
 	slog::info << "[Frame " << frame_number << "] Single Packet Decode + Image Conversion + Inference Time: " << decode_inferenece_time << " ms" << slog::endl;
-	total_inference_time += decode_inferenece_time;
+	total_latency_time += decode_inferenece_time;
 	if (response < 0) break;
-        // stop it, otherwise we'll be saving hundreds of frames
-        if (--how_many_packets_to_process <= 0) break;
+        // stop it when maximal packet processed
+        if (how_many_packets_to_process <= 0) break;
     }
     // https://ffmpeg.org/doxygen/trunk/group__lavc__packet.html#ga63d5a489b419bd5d45cfd09091cbcbc2
     av_packet_unref(pPacket);
   }
   
-  double mean_inference_time = total_inference_time / frame_number;
-  double mean_throughput = 1.0 / mean_inference_time * 1000;
-  slog::info << "Mean Inference Time: " << mean_inference_time << " ms" << slog::endl;
+  double mean_latency = total_latency_time / frame_number;
+  double mean_throughput = 1.0 / mean_latency * 1000;
+  slog::info << "Mean Latency: " << mean_latency << " ms" << slog::endl;
   slog::info << "Mean Throughput:  " << mean_throughput << " FPS" << slog::endl;
   logging("releasing all the resources");
  
@@ -338,7 +303,7 @@ static cv::Mat avframe_to_cvmat(const AVFrame * frame)
     return image;
 }
 
-static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFrame *pFrame, YOLOv3 model)
+static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFrame *pFrame, cv::Mat &image)
 {
   // Supply raw packet data as input to a decoder
   // https://ffmpeg.org/doxygen/trunk/group__lavc__decoding.html#ga58bc4bf1e0ac59e27362597e467efff3
@@ -355,148 +320,29 @@ static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFra
     // https://ffmpeg.org/doxygen/trunk/group__lavc__decoding.html#ga11e6542c4e66d3028668788a1a74217c
     auto decoding_t0 = std::chrono::high_resolution_clock::now();
     response = avcodec_receive_frame(pCodecContext, pFrame);
-    auto decoding_t1 = std::chrono::high_resolution_clock::now();
-    double decoding_time = std::chrono::duration_cast<ms>(decoding_t1 - decoding_t0).count();
-    slog::info << "[Frame " << frame_number << " ] Decoding Time:  " << decoding_time << " ms" << slog::endl;
     if (response == AVERROR(EAGAIN) || response == AVERROR_EOF) {
       break;
     } else if (response < 0) {
       logging("Error while receiving a frame from the decoder: %s", av_err2str(response));
-      //logging("Error while receiving a frame from the decoder: %s", a(response));
       return response;
     }
-    
+    auto decoding_t1 = std::chrono::high_resolution_clock::now();
+    double decoding_time = std::chrono::duration_cast<ms>(decoding_t1 - decoding_t0).count();
+    slog::info << "[Frame " << frame_number << "] Decoding Time:  " << decoding_time << " ms" << slog::endl;
+
     if (response >= 0) {
       if (frame_number % frame_base != 0){
           return 0;
       }
 
-      /*
-      logging(
-          "Frame %d (type=%c, size=%d bytes, format=%d) pts %d key_frame %d [DTS %d]",
-          pCodecContext->frame_number,
-          av_get_picture_type_char(pFrame->pict_type),
-          pFrame->pkt_size,
-          pFrame->format,
-          pFrame->pts,
-          pFrame->key_frame,
-          pFrame->coded_picture_number
-      );
-      */
-
-      //char frame_filename[1024];
-      //snprintf(frame_filename, sizeof(frame_filename), "%s-%d.pgm", "frame", pCodecContext->frame_number);
-      // Check if the frame is a planar YUV 4:2:0, 12bpp
-      // That is the format of the provided .mp4 file
-      // RGB formats will definitely not give a gray image
-      // Other YUV image may do so, but untested, so give a warning
-      // cv2::Mat mat(avctx->height, avctx->width, CV_8UC3, framergb->data[0], framergb->linesize[0]);
-      // cv2::imshow("frame", mat);
-      // cv2::waitKey(10);
-      //logging("Frame height: %d, width: %d, linesize: %d", pFrame->width, pFrame->height, pFrame->linesize[0]);
-
       // Convert avframe (AV_PIX_FMT_YUV420P) to cv::Mat (AV_PIX_FMT_BGR24)
       auto conversion_t0 = std::chrono::high_resolution_clock::now();
-      cv::Mat image = avframe_to_cvmat(pFrame);
+      image = avframe_to_cvmat(pFrame);
       auto conversion_t1 = std::chrono::high_resolution_clock::now();
       double conversion_time = std::chrono::duration_cast<ms>(conversion_t1 - conversion_t0).count();
-      slog::info << "[Frame " << frame_number << " ] Image Conversion Time:  " << conversion_time << " ms " << slog::endl;
-      //if (!image->empty()){
-      //	return 0;
-      //}
-      
-      // Inference 
-      auto inference_t0 = std::chrono::high_resolution_clock::now();
-      model.inference(image, frame_number);
-      auto inference_t1 = std::chrono::high_resolution_clock::now();
-      double inference_time = std::chrono::duration_cast<ms>(inference_t1 - inference_t0).count();
-      slog::info << "[Frame " << frame_number << " ] Inference Time:  " << inference_time << "ms " << slog::endl;
-      
-      //cv::imshow("frame", image);
-      //cv::waitKey(0);
-      
-      /*
-      if (pFrame->format != AV_PIX_FMT_YUV420P)
-      {
-        logging("Warning: the generated file may not be a grayscale image, but could e.g. be just the R component if the video format is RGB");
-      }
-      */
-      // save a grayscale frame into a .pgm file
-      // save_gray_frame(pFrame->data[0], pFrame->linesize[0], pFrame->width, pFrame->height, frame_filename);
-      }
-      
-  }
-  return 0;
-}
-
-static int decode_packet(AVPacket *pPacket, AVCodecContext *pCodecContext, AVFrame *pFrame, YOLOv5 model)
-{
-  // Supply raw packet data as input to a decoder
-  // https://ffmpeg.org/doxygen/trunk/group__lavc__decoding.html#ga58bc4bf1e0ac59e27362597e467efff3
-  int response = avcodec_send_packet(pCodecContext, pPacket);
-
-  if (response < 0) {
-    logging("Error while sending a packet to the decoder: %s", av_err2str(response));
-    return response;
-  }
-
-  while (response >= 0)
-  {
-    // Return decoded output data (into a frame) from a decoder
-    // https://ffmpeg.org/doxygen/trunk/group__lavc__decoding.html#ga11e6542c4e66d3028668788a1a74217c
-    auto decoding_t0 = std::chrono::high_resolution_clock::now();
-    response = avcodec_receive_frame(pCodecContext, pFrame);
-    auto decoding_t1 = std::chrono::high_resolution_clock::now();
-    double decoding_time = std::chrono::duration_cast<ms>(decoding_t1 - decoding_t0).count();
-    slog::info << "[Frame " << frame_number << " ] Decoding Time:  " << decoding_time << " ms" << slog::endl;
-    if (response == AVERROR(EAGAIN) || response == AVERROR_EOF) {
-      break;
-    } else if (response < 0) {
-      logging("Error while receiving a frame from the decoder: %s", av_err2str(response));
-      //logging("Error while receiving a frame from the decoder: %s", a(response));
-      return response;
+      slog::info << "[Frame " << frame_number << "] Image Conversion Time:  " << conversion_time << " ms " << slog::endl;
     }
-    
-    if (response >= 0) {
-      if (frame_number % frame_base != 0){
-          return 0;
-      }
-      // Convert avframe (AV_PIX_FMT_YUV420P) to cv::Mat (AV_PIX_FMT_BGR24)
-      auto conversion_t0 = std::chrono::high_resolution_clock::now();
-      cv::Mat image = avframe_to_cvmat(pFrame);
-      auto conversion_t1 = std::chrono::high_resolution_clock::now();
-      double conversion_time = std::chrono::duration_cast<ms>(conversion_t1 - conversion_t0).count();
-      slog::info << "[Frame " << frame_number << " ] Image Conversion Time:  " << conversion_time << " ms " << slog::endl;
-      
-      // Inference 
-      auto inference_t0 = std::chrono::high_resolution_clock::now();
-      model.inference(image, frame_number);
-      auto inference_t1 = std::chrono::high_resolution_clock::now();
-      double inference_time = std::chrono::duration_cast<ms>(inference_t1 - inference_t0).count();
-      slog::info << "[Frame " << frame_number << " ] Inference Time:  " << inference_time << "ms " << slog::endl;
-      
-      //cv::imshow("frame", image);
-      //cv::waitKey(0);      
-      }
       
   }
   return 0;
 }
-
-
-/*
-static void save_gray_frame(unsigned char *buf, int wrap, int xsize, int ysize, char *filename)
-{
-    FILE *f;
-    int i;
-    f = fopen(filename,"w");
-    // writing the minimal required header for a pgm file format
-    // portable graymap format -> https://en.wikipedia.org/wiki/Netpbm_format#PGM_example
-    fprintf(f, "P5\n%d %d\n%d\n", xsize, ysize, 255);
-
-    // writing line by line
-    for (i = 0; i < ysize; i++)
-        fwrite(buf + i * wrap, 1, xsize, f);
-    fclose(f);
-}
-*/
