@@ -337,11 +337,12 @@ void ParseYOLOV5Output(const YoloParamsV5 &params, const std::string & output_na
 
 }
 
-
-class YOLOv3 {
+class YOLO {
 	public:
-		void initialize_model(std::string model_path);
-		void inference(cv::Mat& frame, int frame_number);
+		virtual void initialize_model(std::string model_path) = 0;
+		virtual void inference(cv::Mat& frame, int frame_number) = 0;
+		virtual std::string get_version() = 0;
+		virtual ~YOLO(){}
 
 	private:
 		ExecutableNetwork network;
@@ -350,7 +351,23 @@ class YOLOv3 {
 		std::map<std::string, YoloParams> yoloParams;
 		std::vector<std::string> labels;
 		InferRequest::Ptr async_infer_request_curr;
-		std::string name = "YOLOv3";
+		std::string version;
+};
+
+class YOLOv3 : public YOLO {
+	public:
+	       virtual void initialize_model(std::string model_path) override;
+	       virtual void inference(cv::Mat& frame, int frame_number) override;
+	       virtual std::string get_version() override { return version; }
+
+	private:
+	       ExecutableNetwork network;
+	       InputsDataMap inputInfo;
+	       OutputsDataMap outputInfo;
+	       std::map<std::string, YoloParams> yoloParams;
+	       std::vector<std::string> labels;
+	       InferRequest::Ptr async_infer_request_curr;
+	       std::string version = "YOLOv3";
 };
 
 void YOLOv3::initialize_model(std::string model_path){
@@ -453,7 +470,7 @@ void YOLOv3::initialize_model(std::string model_path){
 }
 
 void YOLOv3::inference(cv::Mat& frame, int frame_number){
-        auto preprocessing_t0 = std::chrono::high_resolution_clock::now();
+	auto preprocessing_t0 = std::chrono::high_resolution_clock::now();
 
         // --------------------------- 6. Doing inference ------------------------------------------------------
 	std::cout << "Start inference " << std::endl;
@@ -530,13 +547,14 @@ void YOLOv3::inference(cv::Mat& frame, int frame_number){
              slog::info << "[Frame " << frame_number << "] Post Processing Time:  " << post_processing_time << " ms " << slog::endl;
 
 	}        
-    std::cout << "Execution successful" << std::endl;
+    std::cout << "YOLOv3 Model Inference Execution Successful!" << std::endl;
 }
 
-class YOLOv5 : public YOLOv3{
+class YOLOv5 : public YOLO{
 	public:
-		void initialize_model(std::string model_path);
-		void inference(cv::Mat& frame, int frame_number);
+		virtual void initialize_model(std::string model_path) override;
+		virtual void inference(cv::Mat& frame, int frame_number) override;
+		virtual std::string get_version() override { return version; }
 
 	private:
 		ExecutableNetwork network;
@@ -545,7 +563,7 @@ class YOLOv5 : public YOLOv3{
 		std::map<std::string, YoloParamsV5> yoloParams;
 		std::vector<std::string> labels;
 		InferRequest::Ptr async_infer_request_curr;
-		std::string name = "YOLOv5";
+	        std::string version = "YOLOv5";
 };
 
 void YOLOv5::initialize_model(std::string model_path) {
@@ -719,7 +737,7 @@ void YOLOv5::inference(cv::Mat& frame, int frame_number) {
              slog::info << "[Frame " << frame_number << " ] Post Processing Time:  " << post_processing_time << " ms " << slog::endl;
 	}        
     
-	std::cout << "Execution successful" << std::endl;
+	std::cout << "YOLOv5 Model Inference Execution Successful!" << std::endl;
 }
 
 #endif /* YOLO_H */
