@@ -454,11 +454,6 @@ void YOLOv3::initialize_model(std::string model_path){
 
 void YOLOv3::inference(cv::Mat& frame, int frame_number){
         auto preprocessing_t0 = std::chrono::high_resolution_clock::now();
-	// -----------------------------------------------------------------------------------------------------
-
-        // --------------------------- 5. Creating infer request -----------------------------------------------
-        InferRequest::Ptr async_infer_request_curr = network.CreateInferRequestPtr();
-        // -----------------------------------------------------------------------------------------------------
 
         // --------------------------- 6. Doing inference ------------------------------------------------------
 	std::cout << "Start inference " << std::endl;
@@ -550,7 +545,6 @@ class YOLOv5 : public YOLOv3{
 		std::map<std::string, YoloParamsV5> yoloParams;
 		std::vector<std::string> labels;
 		InferRequest::Ptr async_infer_request_curr;
-		//InferenceEngine::InferRequest async_infer_request_curr;
 		std::string name = "YOLOv5";
 };
 
@@ -644,7 +638,6 @@ void YOLOv5::initialize_model(std::string model_path) {
 
 	// --------------------------- 5. Creating infer request -----------------------------------------------
         async_infer_request_curr = network.CreateInferRequestPtr();
-	//async_infer_request_curr = network.CreateInferRequest();
 }
 
 void YOLOv5::inference(cv::Mat& frame, int frame_number) {
